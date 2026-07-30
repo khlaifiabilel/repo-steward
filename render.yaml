@@ -2,7 +2,7 @@ services:
   - type: web
     runtime: docker
     name: repo-steward
-    plan: starter
+    plan: free
     region: frankfurt
     branch: main
     numInstances: 1
