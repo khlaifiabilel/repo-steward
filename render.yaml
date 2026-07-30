@@ -1,0 +1,24 @@
+services:
+  - type: web
+    runtime: docker
+    name: repo-steward
+    plan: starter
+    region: frankfurt
+    branch: main
+    numInstances: 1
+    autoDeployTrigger: off
+    healthCheckPath: /healthz
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: REPO_STEWARD_ENVIRONMENT
+        value: production
+      - key: REPO_STEWARD_LOG_LEVEL
+        value: INFO
+      - key: REPO_STEWARD_API_KEY
+        generateValue: true
+      - key: REPO_STEWARD_GITHUB_APP_ID
+        sync: false
+      - key: REPO_STEWARD_GITHUB_PRIVATE_KEY
+        sync: false
+      - key: REPO_STEWARD_GITHUB_WEBHOOK_SECRET
+        sync: false

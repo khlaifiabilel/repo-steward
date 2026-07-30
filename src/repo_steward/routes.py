@@ -8,13 +8,17 @@ import logging
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from pydantic import ValidationError
 
 from repo_steward.config import Settings
 from repo_steward.github import GitHubClient, GitHubError, GitHubTimeoutError
 from repo_steward.models import (
     HealthReport,
+    InstallationRepositoriesWebhook,
+    InstallationWebhook,
     InventoryRequest,
     InventorySummary,
+    MarketplacePurchaseWebhook,
     OwnerAnalysis,
     RepositorySnapshot,
 )
@@ -99,7 +103,14 @@ async def github_webhook(
         str | None, Header(alias="X-GitHub-Delivery", min_length=1, max_length=128)
     ] = None,
     event: Annotated[
-        Literal["ping", "installation", "push"] | None,
+        Literal[
+            "ping",
+            "installation",
+            "installation_repositories",
+            "marketplace_purchase",
+            "push",
+        ]
+        | None,
         Header(alias="X-GitHub-Event", max_length=32),
     ] = None,
 ) -> dict[str, Any]:
@@ -118,12 +129,37 @@ async def github_webhook(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Webhook payload must be a JSON object")
 
+    event_metadata: dict[str, str | int] = {}
+    try:
+        if event == "installation":
+            installation_event = InstallationWebhook.model_validate(payload)
+            event_metadata = {
+                "action": installation_event.action,
+                "installation_id": installation_event.installation.id,
+            }
+        elif event == "installation_repositories":
+            repositories_event = InstallationRepositoriesWebhook.model_validate(payload)
+            event_metadata = {
+                "action": repositories_event.action,
+                "installation_id": repositories_event.installation.id,
+            }
+        elif event == "marketplace_purchase":
+            purchase_event = MarketplacePurchaseWebhook.model_validate(payload)
+            event_metadata = {
+                "action": purchase_event.action,
+                "account_id": purchase_event.marketplace_purchase.account.id,
+                "plan_number": purchase_event.marketplace_purchase.plan.number,
+            }
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Invalid GitHub webhook payload") from exc
+
     logger.info(
         "Webhook received",
         extra={
             "delivery_id": delivery_id,
             "event": event,
             "correlation_id": request.state.correlation_id,
+            **event_metadata,
         },
     )
-    return {"accepted": True, "event": event, "delivery_id": delivery_id}
+    return {"accepted": True, "event": event, "delivery_id": delivery_id, **event_metadata}

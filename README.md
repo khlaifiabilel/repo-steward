@@ -162,6 +162,9 @@ should select an installation and use `create_app_jwt` plus
 
 See [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 
+The hosted service also exposes `/privacy`, `/terms`, and `/support` as public pages for
+installers and the Marketplace listing.
+
 ## Limitations
 
 - File presence does not establish document quality, policy enforcement, or workflow
@@ -169,9 +172,11 @@ See [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 - The generic user-repositories API may not represent every repository visible to an
   installation. Installation-aware enumeration is a post-MVP concern.
 - No event deduplication or durable processing exists because there is no persistence.
-- The webhook accepts only `ping`, `installation`, and `push`, but deliberately performs
-  no action. Valid signed deliveries can be replayed; persistence-based deduplication is
-  deferred until the service has durable state.
+- The webhook accepts `ping`, `installation`, `installation_repositories`,
+  `marketplace_purchase`, and `push`. Installation and Marketplace lifecycle payloads are
+  validated and safely logged, but no entitlement or repository action is performed.
+  Valid signed deliveries can be replayed; persistence-based deduplication is deferred
+  until durable processing exists.
 - CI builds the image and emits a BuildKit SBOM attestation. It does not yet run a
   vulnerability scanner; add a reputable scanner only after its exact action SHA is
   independently verified, without adding write permissions.
@@ -194,13 +199,22 @@ the complete validation suite and container build.
 2. Add installation-aware repository enumeration and explicit rescan orchestration.
 3. Add opt-in, documented persistence only if durable history is proven necessary.
 4. Add organization policy overlays and versioned report exports.
-5. Complete threat modeling, operational SLOs, privacy terms, support contacts, billing,
-   installation onboarding, webhook redelivery/idempotency, and GitHub's Marketplace
-   verification requirements before any Marketplace listing.
+5. Complete threat modeling, operational SLOs, terms, support, installation onboarding,
+   webhook redelivery/idempotency, and production hosting before a Marketplace listing.
+6. Launch a public Marketplace listing with a permanent free tier after private-beta
+   validation. Marketplace availability will not be invite-only.
+7. Add paid monthly and annual tiers after the App is organization-owned, the organization
+   is a verified publisher, and the App has at least 100 installations. Process all
+   Marketplace purchase, trial, upgrade, downgrade, and cancellation events before making
+   a paid plan available.
 
-Marketplace publication is not part of this MVP. The App must remain private until the
-placeholder contacts are replaced and legal, security, privacy, and support reviews are
-complete.
+The source repository and App registration remain private during development. Before the
+free Marketplace launch, the listing will provide working privacy, support, and terms
+links, a pricing plan, listing artwork and screenshots, and a public HTTPS service. The
+free tier will remain available when paid tiers are introduced.
+
+See [MARKETPLACE.md](MARKETPLACE.md) for free-plan registration fields, draft listing copy,
+the Render deployment contract, and publication gates.
 
 ## License
 

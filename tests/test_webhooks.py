@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 
 from fastapi.testclient import TestClient
 
@@ -23,6 +24,92 @@ def test_valid_supported_webhook_is_accepted(client: TestClient) -> None:
     response = client.post("/webhooks/github", content=body, headers=_headers(body))
     assert response.status_code == 202
     assert response.json() == {"accepted": True, "event": "ping", "delivery_id": "delivery-123"}
+
+
+def test_installation_webhook_is_validated(client: TestClient) -> None:
+    body = json.dumps(
+        {
+            "action": "created",
+            "installation": {
+                "id": 42,
+                "account": {"id": 7, "login": "acme", "extra": "ignored"},
+            },
+        }
+    ).encode()
+    response = client.post(
+        "/webhooks/github", content=body, headers=_headers(body, event="installation")
+    )
+    assert response.status_code == 202
+    assert response.json() == {
+        "accepted": True,
+        "event": "installation",
+        "delivery_id": "delivery-123",
+        "action": "created",
+        "installation_id": 42,
+    }
+
+
+def test_installation_repositories_webhook_is_validated(client: TestClient) -> None:
+    body = json.dumps(
+        {
+            "action": "added",
+            "installation": {"id": 42, "account": {"id": 7, "login": "acme"}},
+            "repositories_added": [{"id": 99, "name": "widget"}],
+            "repositories_removed": [],
+        }
+    ).encode()
+    response = client.post(
+        "/webhooks/github",
+        content=body,
+        headers=_headers(body, event="installation_repositories"),
+    )
+    assert response.status_code == 202
+    assert response.json() == {
+        "accepted": True,
+        "event": "installation_repositories",
+        "delivery_id": "delivery-123",
+        "action": "added",
+        "installation_id": 42,
+    }
+
+
+def test_marketplace_purchase_webhook_is_validated(client: TestClient) -> None:
+    body = json.dumps(
+        {
+            "action": "purchased",
+            "marketplace_purchase": {
+                "account": {"id": 7, "login": "acme"},
+                "plan": {
+                    "id": 3,
+                    "number": 1,
+                    "name": "Free",
+                    "monthly_price_in_cents": 0,
+                    "yearly_price_in_cents": 0,
+                },
+            },
+        }
+    ).encode()
+    response = client.post(
+        "/webhooks/github", content=body, headers=_headers(body, event="marketplace_purchase")
+    )
+    assert response.status_code == 202
+    assert response.json() == {
+        "accepted": True,
+        "event": "marketplace_purchase",
+        "delivery_id": "delivery-123",
+        "action": "purchased",
+        "account_id": 7,
+        "plan_number": 1,
+    }
+
+
+def test_lifecycle_webhook_rejects_invalid_payload(client: TestClient) -> None:
+    body = b"{}"
+    response = client.post(
+        "/webhooks/github", content=body, headers=_headers(body, event="installation")
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Invalid GitHub webhook payload"}
 
 
 def test_unsupported_webhook_event_is_rejected(client: TestClient) -> None:

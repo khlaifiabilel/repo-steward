@@ -16,6 +16,19 @@ def test_health(client: TestClient) -> None:
     assert response.headers["X-Correlation-ID"] == "request-1"
 
 
+def test_public_marketplace_pages(client: TestClient) -> None:
+    for path, heading in (
+        ("/", "Deterministic repository health"),
+        ("/privacy", "Privacy policy"),
+        ("/terms", "Terms of service"),
+        ("/support", "Support"),
+    ):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html")
+        assert f"<h1>{heading}</h1>" in response.text
+
+
 def test_analyze_without_credentials(client: TestClient) -> None:
     response = client.post(
         "/api/v1/analyze",

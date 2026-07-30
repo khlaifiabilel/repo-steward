@@ -30,6 +30,52 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class GitHubWebhookModel(BaseModel):
+    """Forward-compatible boundary model for GitHub-owned payloads."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+
+class GitHubWebhookAccount(GitHubWebhookModel):
+    id: int = Field(gt=0)
+    login: str = Field(min_length=1, max_length=100)
+
+
+class GitHubInstallation(GitHubWebhookModel):
+    id: int = Field(gt=0)
+    account: GitHubWebhookAccount
+
+
+class InstallationWebhook(GitHubWebhookModel):
+    action: Literal["created", "deleted", "suspend", "unsuspend", "new_permissions_accepted"]
+    installation: GitHubInstallation
+
+
+class InstallationRepositoriesWebhook(GitHubWebhookModel):
+    action: Literal["added", "removed"]
+    installation: GitHubInstallation
+
+
+class MarketplacePlan(GitHubWebhookModel):
+    id: int = Field(gt=0)
+    number: int = Field(gt=0)
+    name: str = Field(min_length=1, max_length=255)
+    monthly_price_in_cents: int = Field(ge=0)
+    yearly_price_in_cents: int = Field(ge=0)
+
+
+class MarketplacePurchase(GitHubWebhookModel):
+    account: GitHubWebhookAccount
+    plan: MarketplacePlan
+
+
+class MarketplacePurchaseWebhook(GitHubWebhookModel):
+    action: Literal[
+        "purchased", "cancelled", "changed", "pending_change", "pending_change_cancelled"
+    ]
+    marketplace_purchase: MarketplacePurchase
+
+
 class RepositorySnapshot(StrictModel):
     """Facts required for deterministic analysis, independent of GitHub."""
 
