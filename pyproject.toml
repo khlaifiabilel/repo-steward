@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "repo-steward"
+version = "0.1.0"
+description = "Deterministic, read-only repository health analysis"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {file = "LICENSE"}
+authors = [{name = "repo-steward contributors"}]
+dependencies = [
+  "cryptography>=48.0.1,<49",
+  "fastapi>=0.115,<1",
+  "httpx>=0.28,<1",
+  "PyJWT>=2.10,<3",
+  "pydantic-settings>=2.7,<3",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx2>=2.9,<3",
+  "mypy>=1.14,<2",
+  "pip-audit>=2.8,<3",
+  "pytest>=9.0.3,<10",
+  "pytest-cov>=6,<8",
+  "pytest-env>=1.1,<2",
+  "ruff>=0.9,<1",
+  "uv>=0.12,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/repo_steward"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["repo_steward"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --cov=repo_steward --cov-report=term-missing --cov-fail-under=90"
+testpaths = ["tests"]
+env = ["REPO_STEWARD_ENVIRONMENT=test"]
+
+[tool.coverage.run]
+branch = true
+source = ["repo_steward"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "if __name__ == .__main__.:"]
