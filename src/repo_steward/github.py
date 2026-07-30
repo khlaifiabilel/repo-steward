@@ -184,6 +184,29 @@ class GitHubClient:
         owner = validate_owner(owner)
         return tuple([item async for item in self._paginate(f"/users/{owner}/repos")])
 
+    async def fetch_installation_repositories(self) -> tuple[dict[str, Any], ...]:
+        repositories: list[dict[str, Any]] = []
+        for page in range(1, self.max_pages + 1):
+            payload = await self._get(
+                "/installation/repositories", params={"per_page": 100, "page": page}
+            )
+            if not isinstance(payload, dict) or not isinstance(payload.get("repositories"), list):
+                raise GitHubProtocolError("expected an installation repository list")
+            page_repositories = payload["repositories"]
+            if not all(isinstance(item, dict) for item in page_repositories):
+                raise GitHubProtocolError("expected an installation repository object")
+            repositories.extend(dict(item) for item in page_repositories)
+            if len(repositories) > self.max_repositories:
+                raise GitHubLimitError("GitHub repository limit reached")
+            total_count = payload.get("total_count")
+            if isinstance(total_count, bool) or not isinstance(total_count, int) or total_count < 0:
+                raise GitHubProtocolError("installation repository count is invalid")
+            if total_count < len(repositories):
+                raise GitHubProtocolError("installation repository count is inconsistent")
+            if len(page_repositories) < 100 or len(repositories) >= total_count:
+                return tuple(repositories)
+        raise GitHubTraversalLimitError("repository pagination limit reached")
+
     async def repository_file_paths(self, owner: str, repo: str, tree_ref: str) -> tuple[str, ...]:
         owner, repo = validate_owner(owner), validate_repo(repo)
         if (
@@ -246,18 +269,33 @@ class GitHubClient:
 
     async def owner_snapshots(self, owner: str) -> tuple[RepositorySnapshot, ...]:
         repositories = await self.fetch_owner_repositories(owner)
+        return await self._repository_snapshots(repositories, owner=owner)
+
+    async def installation_snapshots(self) -> tuple[RepositorySnapshot, ...]:
+        repositories = await self.fetch_installation_repositories()
+        return await self._repository_snapshots(repositories)
+
+    async def _repository_snapshots(
+        self, repositories: tuple[dict[str, Any], ...], *, owner: str | None = None
+    ) -> tuple[RepositorySnapshot, ...]:
         snapshots: list[RepositorySnapshot] = []
         for repository in repositories:
             name = repository.get("name")
             default_branch = repository.get("default_branch") or "main"
             if not isinstance(name, str) or not isinstance(default_branch, str):
                 raise GitHubProtocolError("repository is missing its name or default branch")
-            paths = await self.repository_file_paths(owner, name, default_branch)
+            repository_owner = owner
+            if repository_owner is None:
+                owner_data = repository.get("owner")
+                repository_owner = owner_data.get("login") if isinstance(owner_data, dict) else None
+            if not isinstance(repository_owner, str):
+                raise GitHubProtocolError("repository is missing its owner")
+            paths = await self.repository_file_paths(repository_owner, name, default_branch)
             license_data = repository.get("license")
             license_name = license_data.get("spdx_id") if isinstance(license_data, dict) else None
             snapshots.append(
                 RepositorySnapshot(
-                    owner=owner,
+                    owner=repository_owner,
                     name=name,
                     default_branch=default_branch,
                     archived=bool(repository.get("archived")),

@@ -172,3 +172,8 @@ class InventoryRequest(StrictModel):
 class OwnerAnalysis(StrictModel):
     owner: str
     reports: tuple[HealthReport, ...]
+
+
+class InstallationAnalysis(StrictModel):
+    installation_id: int = Field(gt=0)
+    reports: tuple[HealthReport, ...]

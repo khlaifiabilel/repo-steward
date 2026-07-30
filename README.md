@@ -35,9 +35,9 @@ HTTP client / GitHub webhook
             |
  domain models + fixed rules
 
-Optional owner endpoint ---> bounded read-only GitHub REST client
-                                  ^
-                     token or GitHub App token exchange helper
+Owner or installation endpoint ---> bounded read-only GitHub REST client
+                                            ^
+                               token or App token exchange
 ```
 
 `models.py`, `rules.py`, and `services.py` have no network dependency. `github.py` owns
@@ -90,6 +90,12 @@ With `REPO_STEWARD_GITHUB_TOKEN` and an explicit comma-separated
 repositories and analyzes their metadata and paths. It has an aggregate timeout in
 addition to per-request and traversal bounds. Upstream details are never returned.
 
+With a GitHub App ID and private key configured,
+`POST /api/v1/github/installations/{installation_id}/analyze` creates a short-lived App
+JWT, exchanges it for an ephemeral installation token, enumerates only repositories
+granted to that installation, and applies the same bounds. The endpoint is protected by
+the service API key and never returns or persists either token.
+
 ## Scoring
 
 Each active repository starts at 100 in four categories. Triggered rules subtract the
@@ -125,16 +131,17 @@ Exact minimal repository permissions:
 - **Metadata: Read-only** (mandatory GitHub App permission; repository identity/status)
 - **Contents: Read-only** (Git Trees and default-branch paths)
 
-No organization or account permissions are required for the MVP. Subscribe only to:
+No organization or account permissions are required for the MVP. GitHub Apps receive
+**Installation** and **Installation repositories** lifecycle events automatically.
+Subscribe only to:
 
-- **Installation** (installation lifecycle)
 - **Push** (future read-only re-analysis trigger; currently accepted without action)
 - **Ping** is sent by GitHub when configuring the webhook and requires no subscription.
 
 Do not grant Administration, Actions, Issues, Pull requests, or any write permission.
-The current owner endpoint accepts a configured token directly; production App wiring
-should select an installation and use `create_app_jwt` plus
-`exchange_installation_token` before constructing the read-only client.
+The legacy owner endpoint accepts a configured token directly. Production installation
+analysis uses `create_app_jwt` and `exchange_installation_token` before constructing the
+read-only client.
 
 ## Security model
 
@@ -169,8 +176,8 @@ installers and the Marketplace listing.
 
 - File presence does not establish document quality, policy enforcement, or workflow
   success. The service does not read file contents.
-- The generic user-repositories API may not represent every repository visible to an
-  installation. Installation-aware enumeration is a post-MVP concern.
+- The operator-protected installation endpoint has no installer-facing authentication or
+  frontend yet. It must not be exposed as a substitute for an authenticated customer UI.
 - No event deduplication or durable processing exists because there is no persistence.
 - The webhook accepts `ping`, `installation`, `installation_repositories`,
   `marketplace_purchase`, and `push`. Installation and Marketplace lifecycle payloads are

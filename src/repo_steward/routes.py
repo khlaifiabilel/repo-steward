@@ -7,13 +7,16 @@ import json
 import logging
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+import jwt
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request, status
 from pydantic import ValidationError
 
+from repo_steward.auth import create_app_jwt, exchange_installation_token
 from repo_steward.config import Settings
 from repo_steward.github import GitHubClient, GitHubError, GitHubTimeoutError
 from repo_steward.models import (
     HealthReport,
+    InstallationAnalysis,
     InstallationRepositoriesWebhook,
     InstallationWebhook,
     InventoryRequest,
@@ -93,6 +96,85 @@ async def analyze_owner(owner: str, request: Request) -> OwnerAnalysis:
         logger.warning("GitHub read failed", extra={"correlation_id": request.state.correlation_id})
         raise HTTPException(status_code=502, detail="GitHub request failed") from exc
     return OwnerAnalysis(owner=owner, reports=tuple(analyze(snapshot) for snapshot in snapshots))
+
+
+@api_router.post(
+    "/github/installations/{installation_id}/analyze", response_model=InstallationAnalysis
+)
+async def analyze_installation(
+    installation_id: Annotated[int, Path(gt=0)], request: Request
+) -> InstallationAnalysis:
+    settings: Settings = request.app.state.settings
+    if settings.github_app_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GitHub App credentials are not configured",
+        )
+    try:
+        private_key = settings.load_private_key()
+    except OSError as exc:
+        logger.error(
+            "GitHub App private key cannot be loaded",
+            extra={"correlation_id": request.state.correlation_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GitHub App credentials are invalid",
+        ) from exc
+    if private_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GitHub App credentials are not configured",
+        )
+    try:
+        async with asyncio.timeout(settings.github_owner_timeout_seconds):
+            app_jwt = create_app_jwt(settings.github_app_id, private_key)
+            installation_token = await exchange_installation_token(
+                app_jwt,
+                installation_id,
+                base_url=settings.github_api_url,
+                timeout=settings.github_request_timeout_seconds,
+            )
+            async with GitHubClient(
+                installation_token,
+                base_url=settings.github_api_url,
+                timeout=settings.github_request_timeout_seconds,
+                max_pages=settings.github_max_pages,
+                max_tree_requests=settings.github_max_tree_requests,
+                max_repositories=settings.github_max_repositories,
+                max_requests=settings.github_max_requests,
+                max_response_bytes=settings.github_max_response_bytes,
+                max_tree_entries=settings.github_max_tree_entries,
+                max_queued_trees=settings.github_max_queued_trees,
+                max_retained_paths=settings.github_max_retained_paths,
+                allow_localhost_http=settings.environment.casefold() == "test",
+            ) as client:
+                snapshots = await client.installation_snapshots()
+    except (TimeoutError, GitHubTimeoutError) as exc:
+        logger.warning(
+            "GitHub installation analysis timed out",
+            extra={"correlation_id": request.state.correlation_id},
+        )
+        raise HTTPException(status_code=504, detail="GitHub request timed out") from exc
+    except (ValueError, jwt.PyJWTError) as exc:
+        logger.error(
+            "GitHub App credentials are invalid",
+            extra={"correlation_id": request.state.correlation_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GitHub App credentials are invalid",
+        ) from exc
+    except GitHubError as exc:
+        logger.warning(
+            "GitHub installation analysis failed",
+            extra={"correlation_id": request.state.correlation_id},
+        )
+        raise HTTPException(status_code=502, detail="GitHub request failed") from exc
+    return InstallationAnalysis(
+        installation_id=installation_id,
+        reports=tuple(analyze(snapshot) for snapshot in snapshots),
+    )
 
 
 @webhook_router.post("/webhooks/github", status_code=status.HTTP_202_ACCEPTED)

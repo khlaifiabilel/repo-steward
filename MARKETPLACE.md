@@ -141,7 +141,8 @@ Do not submit the listing for review until all gates pass:
 
 - Production CI and dependency updates execute successfully.
 - A public production deployment is monitored and has passed webhook redelivery tests.
-- Installation-aware enumeration uses each installation's short-lived token.
+- Installation-aware enumeration uses each installation's short-lived token and passes
+  scope-isolation tests.
 - An authenticated installation report experience is available to every installer.
 - Webhook delivery idempotency and operational failure recovery are implemented.
 - Privacy, terms, support, security, and subprocessor information match production.

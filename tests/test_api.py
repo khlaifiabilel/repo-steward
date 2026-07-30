@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path as FilePath
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -6,7 +7,7 @@ from fastapi.testclient import TestClient
 from repo_steward.app import create_app
 from repo_steward.config import Settings
 from repo_steward.github import GitHubAPIError, GitHubTimeoutError
-from repo_steward.models import InventoryRequest
+from repo_steward.models import InventoryRequest, RepositorySnapshot
 
 
 def test_health(client: TestClient) -> None:
@@ -137,6 +138,74 @@ def test_owner_analysis_has_aggregate_timeout() -> None:
     ):
         response = owner_client.post("/api/v1/github/owners/acme/analyze")
     assert response.status_code == 504
+
+
+def test_installation_analysis_requires_app_credentials(client: TestClient) -> None:
+    response = client.post("/api/v1/github/installations/42/analyze")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "GitHub App credentials are not configured"}
+
+
+def test_installation_analysis_uses_ephemeral_installation_token() -> None:
+    settings = Settings(github_app_id=123, github_private_key="private-key")
+    snapshot = RepositorySnapshot(owner="acme", name="widget", file_paths=("README.md",))
+    with (
+        patch("repo_steward.routes.create_app_jwt", return_value="app-jwt") as create_jwt,
+        patch(
+            "repo_steward.routes.exchange_installation_token",
+            new=AsyncMock(return_value="installation-token"),
+        ) as exchange,
+        patch(
+            "repo_steward.routes.GitHubClient.installation_snapshots",
+            new=AsyncMock(return_value=(snapshot,)),
+        ),
+        TestClient(create_app(settings)) as installation_client,
+    ):
+        response = installation_client.post("/api/v1/github/installations/42/analyze")
+    assert response.status_code == 200
+    assert response.json()["installation_id"] == 42
+    assert response.json()["reports"][0]["repository"] == "acme/widget"
+    create_jwt.assert_called_once_with(123, "private-key")
+    exchange.assert_awaited_once_with(
+        "app-jwt", 42, base_url="https://api.github.com", timeout=10.0
+    )
+
+
+def test_installation_analysis_sanitizes_authentication_errors() -> None:
+    settings = Settings(github_app_id=123, github_private_key="private-key")
+    with (
+        patch(
+            "repo_steward.routes.exchange_installation_token",
+            new=AsyncMock(side_effect=GitHubAPIError(401, "unsafe")),
+        ),
+        patch("repo_steward.routes.create_app_jwt", return_value="app-jwt"),
+        TestClient(create_app(settings)) as installation_client,
+    ):
+        response = installation_client.post("/api/v1/github/installations/42/analyze")
+    assert response.status_code == 502
+    assert response.json() == {"detail": "GitHub request failed"}
+    assert "unsafe" not in response.text
+
+
+def test_installation_analysis_rejects_invalid_id_and_key() -> None:
+    settings = Settings(github_app_id=123, github_private_key="invalid")
+    with (
+        patch("repo_steward.routes.create_app_jwt", side_effect=ValueError("unsafe")),
+        TestClient(create_app(settings)) as installation_client,
+    ):
+        invalid_key = installation_client.post("/api/v1/github/installations/42/analyze")
+        invalid_id = installation_client.post("/api/v1/github/installations/0/analyze")
+    assert invalid_key.status_code == 503
+    assert invalid_key.json() == {"detail": "GitHub App credentials are invalid"}
+    assert invalid_id.status_code == 422
+
+
+def test_installation_analysis_sanitizes_unreadable_key(tmp_path: FilePath) -> None:
+    settings = Settings(github_app_id=123, github_private_key_path=tmp_path / "missing.pem")
+    with TestClient(create_app(settings)) as installation_client:
+        response = installation_client.post("/api/v1/github/installations/42/analyze")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "GitHub App credentials are invalid"}
 
 
 def test_request_body_limit_covers_api_routes_and_chunked_stream() -> None:

@@ -175,6 +175,99 @@ def test_owner_snapshots_map_repository_metadata_and_paths() -> None:
     assert snapshots[0].file_paths == ("README.md",)
 
 
+def test_installation_snapshots_use_only_installation_repositories() -> None:
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.path)
+        if request.url.path == "/installation/repositories":
+            return httpx.Response(
+                200,
+                json={
+                    "total_count": 1,
+                    "repositories": [
+                        {
+                            "owner": {"login": "acme"},
+                            "name": "private-widget",
+                            "default_branch": "main",
+                            "private": True,
+                            "license": {"spdx_id": "Apache-2.0"},
+                            "topics": ["python"],
+                        }
+                    ],
+                },
+            )
+        assert request.url.path == "/repos/acme/private-widget/git/trees/main"
+        return httpx.Response(
+            200, json={"truncated": False, "tree": [{"path": "README.md", "type": "blob"}]}
+        )
+
+    snapshots = run(with_client(handler, lambda client: client.installation_snapshots()))
+    assert isinstance(snapshots, tuple)
+    assert len(snapshots) == 1
+    assert snapshots[0].owner == "acme"
+    assert snapshots[0].name == "private-widget"
+    assert snapshots[0].private is True
+    assert snapshots[0].license == "Apache-2.0"
+    assert requests == [
+        "/installation/repositories",
+        "/repos/acme/private-widget/git/trees/main",
+    ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        [],
+        {"total_count": 1, "repositories": "invalid"},
+        {"total_count": 1, "repositories": ["invalid"]},
+        {"total_count": True, "repositories": []},
+        {"total_count": 0, "repositories": [{"name": "unexpected"}]},
+    ),
+)
+def test_installation_repository_shapes_are_validated(payload: object) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    with pytest.raises(GitHubProtocolError):
+        run(with_client(handler, lambda client: client.fetch_installation_repositories()))
+
+
+def test_installation_repository_limit_is_enforced() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "total_count": 2,
+                "repositories": [{"name": "one"}, {"name": "two"}],
+            },
+        )
+
+    with pytest.raises(GitHubLimitError, match="repository limit"):
+        run(
+            with_client(
+                handler,
+                lambda client: client.fetch_installation_repositories(),
+                max_repositories=1,
+            )
+        )
+
+
+def test_installation_snapshot_requires_repository_owner() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/installation/repositories"
+        return httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "repositories": [{"name": "widget", "default_branch": "main"}],
+            },
+        )
+
+    with pytest.raises(GitHubProtocolError, match="owner"):
+        run(with_client(handler, lambda client: client.installation_snapshots()))
+
+
 @pytest.mark.parametrize("owner", ("bad/owner", "-starts", "ends-", "a" * 40))
 def test_invalid_owners_are_rejected(owner: str) -> None:
     with pytest.raises(ValueError, match="owner"):
