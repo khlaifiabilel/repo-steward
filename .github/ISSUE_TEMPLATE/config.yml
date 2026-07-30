@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/khlaifiabilel/repo-steward/security/advisories/new
+    about: Report vulnerabilities privately and do not open a public issue.
+  - name: Support
+    url: https://repo-steward.onrender.com/support
+    about: Get help with installation, reports, or account access.

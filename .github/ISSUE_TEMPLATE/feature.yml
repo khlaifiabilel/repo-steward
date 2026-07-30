@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a focused improvement to repo-steward
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Maintainer problem
+      description: Describe the repository-health problem and who experiences it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain the desired deterministic, read-only behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Note existing workflows or smaller approaches that could solve the problem.
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      options:
+        - label: This proposal does not require write access to installed repositories.
+          required: true
+        - label: This proposal can produce explainable, reviewable results.
+          required: true
