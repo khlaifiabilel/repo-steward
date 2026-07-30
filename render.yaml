@@ -8,7 +8,6 @@ services:
     numInstances: 1
     autoDeployTrigger: off
     healthCheckPath: /healthz
-    maxShutdownDelaySeconds: 30
     envVars:
       - key: REPO_STEWARD_ENVIRONMENT
         value: production
