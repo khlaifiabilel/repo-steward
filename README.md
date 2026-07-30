@@ -133,10 +133,9 @@ Exact minimal repository permissions:
 
 No organization or account permissions are required for the MVP. GitHub Apps receive
 **Installation** and **Installation repositories** lifecycle events automatically.
-Subscribe only to:
-
-- **Push** (future read-only re-analysis trigger; currently accepted without action)
-- **Ping** is sent by GitHub when configuring the webhook and requires no subscription.
+Do not add optional event subscriptions during staging. **Ping** is sent when configuring
+the webhook and requires no subscription. The endpoint accepts **Push** for forward
+compatibility, but the App should subscribe only after re-analysis orchestration exists.
 
 Do not grant Administration, Actions, Issues, Pull requests, or any write permission.
 The legacy owner endpoint accepts a configured token directly. Production installation

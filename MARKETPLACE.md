@@ -31,9 +31,8 @@ Request only these repository permissions:
 - **Contents:** Read-only
 
 GitHub Apps receive `installation` and `installation_repositories` lifecycle events
-automatically. Subscribe to this additional event:
-
-- **Push**
+automatically. Do not add optional event subscriptions during staging. Add `push` only
+after explicit re-analysis orchestration and delivery idempotency are implemented.
 
 The Marketplace listing must also deliver `marketplace_purchase` events to the configured
 webhook so purchases, plan changes, pending changes, and cancellations are observed. The
